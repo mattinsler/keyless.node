@@ -21,7 +21,7 @@
       "url": "https://github.com/mattinsler/keyless.node/blob/master/LICENSE-MIT"
     }
   ],
-  "main": "lib/keyless",
+  "main": "dist/keyless",
   "engines": {
     "node": ">= 0.8.0"
   },
