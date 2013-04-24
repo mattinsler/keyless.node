@@ -1,52 +1,119 @@
 (function() {
-  var betturl, request;
+  var betturl, fix_server_url, request;
 
   betturl = require('betturl');
 
   request = require('request');
 
-  module.exports = function(opts) {
-    if (opts.server == null) {
-      throw new Error('');
+  fix_server_url = function(url) {
+    var parsed, _ref;
+    parsed = betturl.parse(url);
+    if ((_ref = parsed.protocol) == null) {
+      parsed.protocol = 'http';
     }
-    return {
-      protect: function(req, res, next) {
-        var auth, url, _ref;
-        if (req.session.keyless_user != null) {
-          req.keyless_user = req.session.keyless_user;
-          return next();
+    parsed.query = {};
+    parsed.hash = '';
+    url = betturl.format(parsed);
+    return url.replace(/\/+$/, '');
+  };
+
+  module.exports = function(opts) {
+    var authenticate, redirect_without_ticket, validate_ticket, validate_token, _ref;
+    if (opts.server == null) {
+      throw new Error('Must provide a server parameter');
+    }
+    opts.server = fix_server_url(opts.server);
+    if ((_ref = opts.shared_key_header) == null) {
+      opts.shared_key_header = 'x-keyless-sso';
+    }
+    redirect_without_ticket = function(req, res, next) {
+      var parsed;
+      parsed = betturl.parse(req.full_url);
+      delete parsed.query.ticket;
+      return res.redirect(betturl.format(parsed));
+    };
+    authenticate = function(req, res, next) {
+      delete req.keyless_user;
+      delete req.session.keyless_token;
+      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(req.full_url));
+    };
+    validate_ticket = function(req, res, next, ticket) {
+      var headers;
+      headers = {
+        'Accept': 'application/json'
+      };
+      headers[opts.shared_key_header] = opts.shared_key;
+      return request({
+        url: opts.server + '/validate?ticket=' + encodeURIComponent(ticket),
+        pool: false,
+        headers: headers
+      }, function(err, validate_res, body) {
+        if (err != null) {
+          return next(err);
         }
-        url = ((_ref = req.get('x-forwarded-protocol')) != null ? _ref : req.protocol) + '://' + req.get('host') + req.url;
-        auth = function() {
-          return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(url));
-        };
-        if (req.query.ticket == null) {
-          return auth();
+        if (validate_res.statusCode === 401) {
+          return authenticate(req, res, next);
         }
-        return request({
-          url: opts.server + '/validate?ticket=' + encodeURIComponent(req.query.ticket),
-          pool: false,
-          headers: {
-            'x-keyless-sso': opts.shared_key
-          }
-        }, function(err, validate_res, body) {
-          var parsed;
-          if (err != null) {
-            return next(err);
-          }
+        try {
           if (typeof body === 'string') {
             body = JSON.parse(body);
           }
-          req.session.keyless_user = body.user;
-          parsed = betturl.parse(url);
-          delete parsed.query.ticket;
-          url = betturl.format(parsed);
-          return res.redirect(url);
-        });
+        } catch (e) {
+          return next(e);
+        }
+        req.session.keyless_token = body.token;
+        return redirect_without_ticket(req, res, next);
+      });
+    };
+    validate_token = function(req, res, next, token) {
+      var headers;
+      headers = {
+        'Accept': 'application/json'
+      };
+      headers[opts.shared_key_header] = opts.shared_key;
+      return request({
+        url: opts.server + '/validate?token=' + encodeURIComponent(token),
+        pool: false,
+        headers: headers
+      }, function(err, validate_res, body) {
+        if (err != null) {
+          return next(err);
+        }
+        if (validate_res.statusCode === 401) {
+          return authenticate(req, res, next);
+        }
+        try {
+          if (typeof body === 'string') {
+            body = JSON.parse(body);
+          }
+        } catch (e) {
+          return next(e);
+        }
+        req.keyless_user = body.user;
+        return next();
+      });
+    };
+    return {
+      protect: function(req, res, next) {
+        var _ref1;
+        req.query = betturl.parse(req.url).query;
+        req.resolved_protocol = (_ref1 = req.get('x-forwarded-proto')) != null ? _ref1 : req.protocol;
+        req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url;
+        if (req.keyless_user != null) {
+          return next();
+        }
+        if (req.session.keyless_token != null) {
+          return validate_token(req, res, next, req.session.keyless_token);
+        }
+        if (req.query.ticket != null) {
+          return validate_ticket(req, res, next, req.query.ticket);
+        }
+        return authenticate(req, res, next);
       },
       logout: function(req, res, next) {
         var url;
-        delete req.session.keyless_user;
+        delete req.keyless_user;
+        delete req.session.keyless_token;
         url = opts.server + '/logout';
         if (opts.on_logout != null) {
           url += '?callback=' + encodeURIComponent(url);

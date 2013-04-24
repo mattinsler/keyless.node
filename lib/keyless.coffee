@@ -5,38 +5,86 @@ request = require 'request'
 # - server
 # - shared_key
 # - on_logout
+# - shared_key_header
+
+fix_server_url = (url) ->
+  parsed = betturl.parse(url)
+  parsed.protocol ?= 'http'
+  parsed.query = {}
+  parsed.hash = ''
+  url = betturl.format(parsed)
+  url.replace(/\/+$/, '')
 
 module.exports = (opts) ->
-  throw new Error('') unless opts.server?
+  throw new Error('Must provide a server parameter') unless opts.server?
+  opts.server = fix_server_url(opts.server)
+  
+  opts.shared_key_header ?= 'x-keyless-sso'
+  
+  redirect_without_ticket = (req, res, next) ->
+    parsed = betturl.parse(req.full_url)
+    delete parsed.query.ticket
+    res.redirect(betturl.format(parsed))
+  
+  authenticate = (req, res, next) ->
+    delete req.keyless_user
+    delete req.session.keyless_token
+    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(req.full_url))
+  
+  validate_ticket = (req, res, next, ticket) ->
+    headers = {
+      'Accept': 'application/json'
+    }
+    headers[opts.shared_key_header] = opts.shared_key
+    request {
+      url: opts.server + '/validate?ticket=' + encodeURIComponent(ticket)
+      pool: false
+      headers: headers
+    }, (err, validate_res, body) ->
+      return next(err) if err?
+      return authenticate(req, res, next) if validate_res.statusCode is 401
+      
+      try
+        body = JSON.parse(body) if typeof body is 'string'
+      catch e
+        return next(e)
+      req.session.keyless_token = body.token
+      redirect_without_ticket(req, res, next)
+  
+  validate_token = (req, res, next, token) ->
+    headers = {
+      'Accept': 'application/json'
+    }
+    headers[opts.shared_key_header] = opts.shared_key
+    request {
+      url: opts.server + '/validate?token=' + encodeURIComponent(token)
+      pool: false
+      headers: headers
+    }, (err, validate_res, body) ->
+      return next(err) if err?
+      return authenticate(req, res, next) if validate_res.statusCode is 401
+      
+      try
+        body = JSON.parse(body) if typeof body is 'string'
+      catch e
+        return next(e)
+      req.keyless_user = body.user
+      next()
   
   {
     protect: (req, res, next) ->
-      if req.session.keyless_user?
-        req.keyless_user = req.session.keyless_user
-        return next()
+      req.query = betturl.parse(req.url).query
+      req.resolved_protocol = req.get('x-forwarded-proto') ? req.protocol
+      req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url
       
-      url = (req.get('x-forwarded-protocol') ? req.protocol) + '://' + req.get('host') + req.url
-      
-      auth = -> res.redirect(opts.server + '/login?callback=' + encodeURIComponent(url))
-
-      return auth() unless req.query.ticket?
-      request {
-        url: opts.server + '/validate?ticket=' + encodeURIComponent(req.query.ticket)
-        pool: false
-        headers: {
-          'x-keyless-sso': opts.shared_key
-        }
-      }, (err, validate_res, body) ->
-        return next(err) if err?
-        body = JSON.parse(body) if typeof body is 'string'
-        req.session.keyless_user = body.user
-        parsed = betturl.parse(url)
-        delete parsed.query.ticket
-        url = betturl.format(parsed)
-        res.redirect(url)
+      return next() if req.keyless_user?
+      return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
+      return validate_ticket(req, res, next, req.query.ticket) if req.query.ticket?
+      authenticate(req, res, next)
     
     logout: (req, res, next) ->
-      delete req.session.keyless_user
+      delete req.keyless_user
+      delete req.session.keyless_token
       url = opts.server + '/logout'
       url += '?callback=' + encodeURIComponent(url) if opts.on_logout?
       res.redirect(url)
