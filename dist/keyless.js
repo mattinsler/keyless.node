@@ -44,7 +44,10 @@
       };
       headers[opts.shared_key_header] = opts.shared_key;
       return request({
-        url: opts.server + '/validate?ticket=' + encodeURIComponent(ticket),
+        url: opts.server + '/validate',
+        qs: {
+          ticket: ticket
+        },
         pool: false,
         headers: headers
       }, function(err, validate_res, body) {
@@ -66,13 +69,20 @@
       });
     };
     validate_token = function(req, res, next, token) {
-      var headers;
+      var headers, query;
       headers = {
         'Accept': 'application/json'
       };
       headers[opts.shared_key_header] = opts.shared_key;
+      query = {
+        token: token
+      };
+      if (opts.authorization_data != null) {
+        query.authorization_data = JSON.stringify(opts.authorization_data);
+      }
       return request({
-        url: opts.server + '/validate?token=' + encodeURIComponent(token),
+        url: opts.server + '/validate',
+        qs: query,
         pool: false,
         headers: headers
       }, function(err, validate_res, body) {

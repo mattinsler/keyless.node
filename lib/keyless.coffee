@@ -37,7 +37,9 @@ module.exports = (opts) ->
     }
     headers[opts.shared_key_header] = opts.shared_key
     request {
-      url: opts.server + '/validate?ticket=' + encodeURIComponent(ticket)
+      url: opts.server + '/validate'
+      qs:
+        ticket: ticket
       pool: false
       headers: headers
     }, (err, validate_res, body) ->
@@ -56,8 +58,11 @@ module.exports = (opts) ->
       'Accept': 'application/json'
     }
     headers[opts.shared_key_header] = opts.shared_key
+    query = {token: token}
+    query.authorization_data = JSON.stringify(opts.authorization_data) if opts.authorization_data?
     request {
-      url: opts.server + '/validate?token=' + encodeURIComponent(token)
+      url: opts.server + '/validate'
+      qs: query
       pool: false
       headers: headers
     }, (err, validate_res, body) ->
