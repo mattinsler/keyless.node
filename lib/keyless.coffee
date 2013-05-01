@@ -21,15 +21,18 @@ module.exports = (opts) ->
   
   opts.shared_key_header ?= 'x-keyless-sso'
   
+  remove_ticket_from_url = (url) ->
+    parsed = betturl.parse(url)
+    delete parsed.query.auth_ticket
+    betturl.format(parsed)
+  
   redirect_without_ticket = (req, res, next) ->
-    parsed = betturl.parse(req.full_url)
-    delete parsed.query.ticket
-    res.redirect(betturl.format(parsed))
+    res.redirect(remove_ticket_from_url(req.full_url))
   
   authenticate = (req, res, next) ->
     delete req.keyless_user
     delete req.session.keyless_token
-    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(req.full_url))
+    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.full_url)))
   
   validate_ticket = (req, res, next, ticket) ->
     headers = {
@@ -44,7 +47,8 @@ module.exports = (opts) ->
       headers: headers
     }, (err, validate_res, body) ->
       return next(err) if err?
-      return authenticate(req, res, next) if validate_res.statusCode is 401
+      status_class = parseInt(validate_res.statusCode / 100)
+      return authenticate(req, res, next) unless status_class is 2
       
       try
         body = JSON.parse(body) if typeof body is 'string'
@@ -67,13 +71,16 @@ module.exports = (opts) ->
       headers: headers
     }, (err, validate_res, body) ->
       return next(err) if err?
-      return authenticate(req, res, next) if validate_res.statusCode is 401
+      status_class = parseInt(validate_res.statusCode / 100)
+      return authenticate(req, res, next) unless status_class is 2
       
       try
         body = JSON.parse(body) if typeof body is 'string'
       catch e
         return next(e)
       req.keyless_user = body.user
+      req.session.keyless_token = token
+      return redirect_without_ticket(req, res, next) if req.query.auth_ticket?
       next()
   
   {
@@ -83,8 +90,9 @@ module.exports = (opts) ->
       req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url
       
       return next() if req.keyless_user?
+      return validate_token(req, res, next, req.query.auth_token) if req.query.auth_token?
       return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
-      return validate_ticket(req, res, next, req.query.ticket) if req.query.ticket?
+      return validate_ticket(req, res, next, req.query.auth_ticket) if req.query.auth_ticket?
       authenticate(req, res, next)
     
     logout: (req, res, next) ->

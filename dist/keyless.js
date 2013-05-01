@@ -18,7 +18,7 @@
   };
 
   module.exports = function(opts) {
-    var authenticate, redirect_without_ticket, validate_ticket, validate_token, _ref;
+    var authenticate, redirect_without_ticket, remove_ticket_from_url, validate_ticket, validate_token, _ref;
     if (opts.server == null) {
       throw new Error('Must provide a server parameter');
     }
@@ -26,16 +26,19 @@
     if ((_ref = opts.shared_key_header) == null) {
       opts.shared_key_header = 'x-keyless-sso';
     }
-    redirect_without_ticket = function(req, res, next) {
+    remove_ticket_from_url = function(url) {
       var parsed;
-      parsed = betturl.parse(req.full_url);
-      delete parsed.query.ticket;
-      return res.redirect(betturl.format(parsed));
+      parsed = betturl.parse(url);
+      delete parsed.query.auth_ticket;
+      return betturl.format(parsed);
+    };
+    redirect_without_ticket = function(req, res, next) {
+      return res.redirect(remove_ticket_from_url(req.full_url));
     };
     authenticate = function(req, res, next) {
       delete req.keyless_user;
       delete req.session.keyless_token;
-      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(req.full_url));
+      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.full_url)));
     };
     validate_ticket = function(req, res, next, ticket) {
       var headers;
@@ -51,10 +54,12 @@
         pool: false,
         headers: headers
       }, function(err, validate_res, body) {
+        var status_class;
         if (err != null) {
           return next(err);
         }
-        if (validate_res.statusCode === 401) {
+        status_class = parseInt(validate_res.statusCode / 100);
+        if (status_class !== 2) {
           return authenticate(req, res, next);
         }
         try {
@@ -86,10 +91,12 @@
         pool: false,
         headers: headers
       }, function(err, validate_res, body) {
+        var status_class;
         if (err != null) {
           return next(err);
         }
-        if (validate_res.statusCode === 401) {
+        status_class = parseInt(validate_res.statusCode / 100);
+        if (status_class !== 2) {
           return authenticate(req, res, next);
         }
         try {
@@ -100,6 +107,10 @@
           return next(e);
         }
         req.keyless_user = body.user;
+        req.session.keyless_token = token;
+        if (req.query.auth_ticket != null) {
+          return redirect_without_ticket(req, res, next);
+        }
         return next();
       });
     };
@@ -112,11 +123,14 @@
         if (req.keyless_user != null) {
           return next();
         }
+        if (req.query.auth_token != null) {
+          return validate_token(req, res, next, req.query.auth_token);
+        }
         if (req.session.keyless_token != null) {
           return validate_token(req, res, next, req.session.keyless_token);
         }
-        if (req.query.ticket != null) {
-          return validate_ticket(req, res, next, req.query.ticket);
+        if (req.query.auth_ticket != null) {
+          return validate_ticket(req, res, next, req.query.auth_ticket);
         }
         return authenticate(req, res, next);
       },
