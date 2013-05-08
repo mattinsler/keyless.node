@@ -33,15 +33,18 @@
       return betturl.format(parsed);
     };
     redirect_without_ticket = function(req, res, next) {
+      console.log('KEYLESS-NODE: redirect_without_ticket');
       return res.redirect(remove_ticket_from_url(req.full_url));
     };
     authenticate = function(req, res, next) {
+      console.log('KEYLESS-NODE: authenticate');
       delete req.keyless_user;
       delete req.session.keyless_token;
       return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.full_url)));
     };
     validate_ticket = function(req, res, next, ticket) {
       var headers;
+      console.log('KEYLESS-NODE: validate_ticket');
       headers = {
         'Accept': 'application/json'
       };
@@ -58,6 +61,7 @@
         if (err != null) {
           return next(err);
         }
+        console.log('KEYLESS-NODE: validate_ticket: ' + validate_res.statusCode + ' - ' + require('util').inspect(body));
         status_class = parseInt(validate_res.statusCode / 100);
         if (status_class !== 2) {
           return authenticate(req, res, next);
@@ -75,6 +79,7 @@
     };
     validate_token = function(req, res, next, token) {
       var headers, query;
+      console.log('KEYLESS-NODE: validate_token');
       headers = {
         'Accept': 'application/json'
       };
@@ -95,6 +100,7 @@
         if (err != null) {
           return next(err);
         }
+        console.log('KEYLESS-NODE: validate_token: ' + validate_res.statusCode + ' - ' + require('util').inspect(body));
         status_class = parseInt(validate_res.statusCode / 100);
         if (status_class !== 2) {
           return authenticate(req, res, next);
@@ -117,6 +123,7 @@
     return {
       protect: function(req, res, next) {
         var _ref1;
+        console.log('KEYLESS-NODE: protect');
         req.query = betturl.parse(req.url).query;
         req.resolved_protocol = (_ref1 = req.get('x-forwarded-proto')) != null ? _ref1 : req.protocol;
         req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url;
