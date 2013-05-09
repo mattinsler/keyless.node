@@ -27,17 +27,17 @@ module.exports = (opts) ->
     betturl.format(parsed)
   
   redirect_without_ticket = (req, res, next) ->
-    console.log 'KEYLESS-NODE: redirect_without_ticket'
+    # console.log 'KEYLESS-NODE: redirect_without_ticket'
     res.redirect(remove_ticket_from_url(req.full_url))
   
   authenticate = (req, res, next) ->
-    console.log 'KEYLESS-NODE: authenticate'
+    # console.log 'KEYLESS-NODE: authenticate'
     delete req.keyless_user
     delete req.session.keyless_token
     res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.full_url)))
   
   validate_ticket = (req, res, next, ticket) ->
-    console.log 'KEYLESS-NODE: validate_ticket'
+    # console.log 'KEYLESS-NODE: validate_ticket'
     headers = {
       'Accept': 'application/json'
     }
@@ -50,7 +50,7 @@ module.exports = (opts) ->
       headers: headers
     }, (err, validate_res, body) ->
       return next(err) if err?
-      console.log 'KEYLESS-NODE: validate_ticket: ' + validate_res.statusCode + ' - ' + require('util').inspect(body)
+      # console.log 'KEYLESS-NODE: validate_ticket: ' + validate_res.statusCode + ' - ' + require('util').inspect(body)
       status_class = parseInt(validate_res.statusCode / 100)
       return authenticate(req, res, next) unless status_class is 2
       
@@ -62,7 +62,7 @@ module.exports = (opts) ->
       redirect_without_ticket(req, res, next)
   
   validate_token = (req, res, next, token) ->
-    console.log 'KEYLESS-NODE: validate_token'
+    # console.log 'KEYLESS-NODE: validate_token'
     headers = {
       'Accept': 'application/json'
     }
@@ -76,7 +76,7 @@ module.exports = (opts) ->
       headers: headers
     }, (err, validate_res, body) ->
       return next(err) if err?
-      console.log 'KEYLESS-NODE: validate_token: ' + validate_res.statusCode + ' - ' + require('util').inspect(body)
+      # console.log 'KEYLESS-NODE: validate_token: ' + validate_res.statusCode + ' - ' + require('util').inspect(body)
       status_class = parseInt(validate_res.statusCode / 100)
       return authenticate(req, res, next) unless status_class is 2
       
@@ -91,7 +91,7 @@ module.exports = (opts) ->
   
   {
     protect: (req, res, next) ->
-      console.log 'KEYLESS-NODE: protect'
+      # console.log 'KEYLESS-NODE: protect'
       req.query = betturl.parse(req.url).query
       req.resolved_protocol = req.get('x-forwarded-proto') ? req.protocol
       req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url
