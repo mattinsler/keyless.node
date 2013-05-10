@@ -127,6 +127,7 @@
       });
     };
     obj = {
+      opts: opts,
       middleware: function() {
         return function(req, res, next) {
           var _base, _ref1, _ref2, _ref3;

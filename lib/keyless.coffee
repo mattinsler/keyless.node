@@ -99,6 +99,8 @@ module.exports = (opts) ->
       next()
   
   obj = {
+    opts: opts
+    
     middleware: ->
       (req, res, next) ->
         # console.log 'KEYLESS-NODE: middleware'
