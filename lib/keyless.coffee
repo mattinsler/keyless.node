@@ -28,13 +28,13 @@ module.exports = (opts) ->
   
   redirect_without_ticket = (req, res, next) ->
     # console.log 'KEYLESS-NODE: redirect_without_ticket'
-    res.redirect(remove_ticket_from_url(req.full_url))
+    res.redirect(remove_ticket_from_url(req.keyless.client.full_url))
   
   authenticate = (req, res, next) ->
     # console.log 'KEYLESS-NODE: authenticate'
     delete req.keyless_user
     delete req.session.keyless_token
-    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.full_url)))
+    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.keyless.client.full_url)))
   
   validate_ticket = (req, res, next, ticket) ->
     # console.log 'KEYLESS-NODE: validate_ticket'
@@ -86,20 +86,39 @@ module.exports = (opts) ->
         return next(e)
       req.keyless_user = body.user
       req.session.keyless_token = token
-      return redirect_without_ticket(req, res, next) if req.query.auth_ticket?
+      return redirect_without_ticket(req, res, next) if req.keyless.client.query.auth_ticket?
+      get_user(req, res, next)
+  
+  get_user = (req, res, next) ->
+    # console.log 'KEYLESS-NODE: get_user'
+    return next() unless req.keyless_user? and opts.get_user_from_keyless_user? and typeof opts.get_user_from_keyless_user is 'function'
+    
+    opts.get_user_from_keyless_user req.keyless_user, (err, user) ->
+      return next(err) if err?
+      req.user = user
       next()
   
-  {
+  obj = {
+    middleware: ->
+      (req, res, next) ->
+        # console.log 'KEYLESS-NODE: middleware'
+        req.keyless ?= {}
+        req.keyless.client ?= {}
+        req.keyless.client.query = betturl.parse(req.url).query
+        req.keyless.client.resolved_protocol = req.get('x-forwarded-proto') ? req.protocol
+        req.keyless.client.full_url = req.keyless.client.resolved_protocol + '://' + req.get('host') + req.url
+        
+        return get_user(req, res, next) if req.keyless_user?
+        return validate_token(req, res, next, req.keyless.client.query.auth_token) if req.keyless.client.query.auth_token?
+        return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
+        return validate_ticket(req, res, next, req.keyless.client.query.auth_ticket) if req.keyless.client.query.auth_ticket?
+        next()
+    
     protect: (req, res, next) ->
       # console.log 'KEYLESS-NODE: protect'
-      req.query = betturl.parse(req.url).query
-      req.resolved_protocol = req.get('x-forwarded-proto') ? req.protocol
-      req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url
+      return next(new Error('Be sure to use the keyless.middleware() in your middleware stack')) unless req.keyless?.client?
       
       return next() if req.keyless_user?
-      return validate_token(req, res, next, req.query.auth_token) if req.query.auth_token?
-      return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
-      return validate_ticket(req, res, next, req.query.auth_ticket) if req.query.auth_ticket?
       authenticate(req, res, next)
     
     logout: (req, res, next) ->
@@ -109,3 +128,8 @@ module.exports = (opts) ->
       url += '?callback=' + encodeURIComponent(url) if opts.on_logout?
       res.redirect(url)
   }
+  
+  obj.__defineSetter__ 'get_user_from_keyless_user', (value) ->
+    opts.get_user_from_keyless_user = value
+  
+  obj

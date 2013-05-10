@@ -18,7 +18,7 @@
   };
 
   module.exports = function(opts) {
-    var authenticate, redirect_without_ticket, remove_ticket_from_url, validate_ticket, validate_token, _ref;
+    var authenticate, get_user, obj, redirect_without_ticket, remove_ticket_from_url, validate_ticket, validate_token, _ref;
     if (opts.server == null) {
       throw new Error('Must provide a server parameter');
     }
@@ -33,12 +33,12 @@
       return betturl.format(parsed);
     };
     redirect_without_ticket = function(req, res, next) {
-      return res.redirect(remove_ticket_from_url(req.full_url));
+      return res.redirect(remove_ticket_from_url(req.keyless.client.full_url));
     };
     authenticate = function(req, res, next) {
       delete req.keyless_user;
       delete req.session.keyless_token;
-      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.full_url)));
+      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.keyless.client.full_url)));
     };
     validate_ticket = function(req, res, next, ticket) {
       var headers;
@@ -108,29 +108,59 @@
         }
         req.keyless_user = body.user;
         req.session.keyless_token = token;
-        if (req.query.auth_ticket != null) {
+        if (req.keyless.client.query.auth_ticket != null) {
           return redirect_without_ticket(req, res, next);
         }
+        return get_user(req, res, next);
+      });
+    };
+    get_user = function(req, res, next) {
+      if (!((req.keyless_user != null) && (opts.get_user_from_keyless_user != null) && typeof opts.get_user_from_keyless_user === 'function')) {
+        return next();
+      }
+      return opts.get_user_from_keyless_user(req.keyless_user, function(err, user) {
+        if (err != null) {
+          return next(err);
+        }
+        req.user = user;
         return next();
       });
     };
-    return {
+    obj = {
+      middleware: function() {
+        return function(req, res, next) {
+          var _base, _ref1, _ref2, _ref3;
+          if ((_ref1 = req.keyless) == null) {
+            req.keyless = {};
+          }
+          if ((_ref2 = (_base = req.keyless).client) == null) {
+            _base.client = {};
+          }
+          req.keyless.client.query = betturl.parse(req.url).query;
+          req.keyless.client.resolved_protocol = (_ref3 = req.get('x-forwarded-proto')) != null ? _ref3 : req.protocol;
+          req.keyless.client.full_url = req.keyless.client.resolved_protocol + '://' + req.get('host') + req.url;
+          if (req.keyless_user != null) {
+            return get_user(req, res, next);
+          }
+          if (req.keyless.client.query.auth_token != null) {
+            return validate_token(req, res, next, req.keyless.client.query.auth_token);
+          }
+          if (req.session.keyless_token != null) {
+            return validate_token(req, res, next, req.session.keyless_token);
+          }
+          if (req.keyless.client.query.auth_ticket != null) {
+            return validate_ticket(req, res, next, req.keyless.client.query.auth_ticket);
+          }
+          return next();
+        };
+      },
       protect: function(req, res, next) {
         var _ref1;
-        req.query = betturl.parse(req.url).query;
-        req.resolved_protocol = (_ref1 = req.get('x-forwarded-proto')) != null ? _ref1 : req.protocol;
-        req.full_url = req.resolved_protocol + '://' + req.get('host') + req.url;
+        if (((_ref1 = req.keyless) != null ? _ref1.client : void 0) == null) {
+          return next(new Error('Be sure to use the keyless.middleware() in your middleware stack'));
+        }
         if (req.keyless_user != null) {
           return next();
-        }
-        if (req.query.auth_token != null) {
-          return validate_token(req, res, next, req.query.auth_token);
-        }
-        if (req.session.keyless_token != null) {
-          return validate_token(req, res, next, req.session.keyless_token);
-        }
-        if (req.query.auth_ticket != null) {
-          return validate_ticket(req, res, next, req.query.auth_ticket);
         }
         return authenticate(req, res, next);
       },
@@ -145,6 +175,10 @@
         return res.redirect(url);
       }
     };
+    obj.__defineSetter__('get_user_from_keyless_user', function(value) {
+      return opts.get_user_from_keyless_user = value;
+    });
+    return obj;
   };
 
 }).call(this);
