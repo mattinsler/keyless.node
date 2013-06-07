@@ -146,8 +146,6 @@
           req.keyless.client.query = betturl.parse(req.url).query;
           req.keyless.client.resolved_protocol = (_ref5 = req.get('x-forwarded-proto')) != null ? _ref5 : req.protocol;
           req.keyless.client.full_url = req.keyless.client.resolved_protocol + '://' + req.get('host') + req.url;
-          console.log('QUERYSTRING: ' + req.keyless.client.query[opts.auth_token_querystring_param]);
-          console.log('HEADER: ' + req.get(opts.auth_token_header_param));
           if (req.keyless_user != null) {
             return get_user(req, res, next);
           }
