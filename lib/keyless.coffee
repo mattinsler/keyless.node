@@ -112,6 +112,7 @@ module.exports = (opts) ->
         
         return get_user(req, res, next) if req.keyless_user?
         return validate_token(req, res, next, req.keyless.client.query.auth_token) if req.keyless.client.query.auth_token?
+        return validate_token(req, res, next, req.get('x-keyless-token')) if req.get('x-keyless-token')?
         return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
         return validate_ticket(req, res, next, req.keyless.client.query.auth_ticket) if req.keyless.client.query.auth_ticket?
         next()

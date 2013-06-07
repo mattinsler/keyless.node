@@ -146,6 +146,9 @@
           if (req.keyless.client.query.auth_token != null) {
             return validate_token(req, res, next, req.keyless.client.query.auth_token);
           }
+          if (req.get('x-keyless-token') != null) {
+            return validate_token(req, res, next, req.get('x-keyless-token'));
+          }
           if (req.session.keyless_token != null) {
             return validate_token(req, res, next, req.session.keyless_token);
           }
