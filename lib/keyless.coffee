@@ -20,6 +20,8 @@ module.exports = (opts) ->
   opts.server = fix_server_url(opts.server)
   
   opts.shared_key_header ?= 'x-keyless-sso'
+  opts.auth_token_querystring_param ?= 'auth_token'
+  opts.auth_token_header_param ?= 'x-keyless-token'
   
   remove_ticket_from_url = (url) ->
     parsed = betturl.parse(url)
@@ -111,8 +113,8 @@ module.exports = (opts) ->
         req.keyless.client.full_url = req.keyless.client.resolved_protocol + '://' + req.get('host') + req.url
         
         return get_user(req, res, next) if req.keyless_user?
-        return validate_token(req, res, next, req.keyless.client.query.auth_token) if req.keyless.client.query.auth_token?
-        return validate_token(req, res, next, req.get('x-keyless-token')) if req.get('x-keyless-token')?
+        return validate_token(req, res, next, req.keyless.client.query[opts.auth_token_querystring_param]) if req.keyless.client.query[opts.auth_token_querystring_param]?
+        return validate_token(req, res, next, req.get(opts.auth_token_header_param)) if req.get(opts.auth_token_header_param)?
         return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
         return validate_ticket(req, res, next, req.keyless.client.query.auth_ticket) if req.keyless.client.query.auth_ticket?
         next()

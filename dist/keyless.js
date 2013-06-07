@@ -18,13 +18,19 @@
   };
 
   module.exports = function(opts) {
-    var authenticate, get_user, obj, redirect_without_ticket, remove_ticket_from_url, validate_ticket, validate_token, _ref;
+    var authenticate, get_user, obj, redirect_without_ticket, remove_ticket_from_url, validate_ticket, validate_token, _ref, _ref1, _ref2;
     if (opts.server == null) {
       throw new Error('Must provide a server parameter');
     }
     opts.server = fix_server_url(opts.server);
     if ((_ref = opts.shared_key_header) == null) {
       opts.shared_key_header = 'x-keyless-sso';
+    }
+    if ((_ref1 = opts.auth_token_querystring_param) == null) {
+      opts.auth_token_querystring_param = 'auth_token';
+    }
+    if ((_ref2 = opts.auth_token_header_param) == null) {
+      opts.auth_token_header_param = 'x-keyless-token';
     }
     remove_ticket_from_url = function(url) {
       var parsed;
@@ -130,24 +136,26 @@
       opts: opts,
       middleware: function() {
         return function(req, res, next) {
-          var _base, _ref1, _ref2, _ref3;
-          if ((_ref1 = req.keyless) == null) {
+          var _base, _ref3, _ref4, _ref5;
+          if ((_ref3 = req.keyless) == null) {
             req.keyless = {};
           }
-          if ((_ref2 = (_base = req.keyless).client) == null) {
+          if ((_ref4 = (_base = req.keyless).client) == null) {
             _base.client = {};
           }
           req.keyless.client.query = betturl.parse(req.url).query;
-          req.keyless.client.resolved_protocol = (_ref3 = req.get('x-forwarded-proto')) != null ? _ref3 : req.protocol;
+          req.keyless.client.resolved_protocol = (_ref5 = req.get('x-forwarded-proto')) != null ? _ref5 : req.protocol;
           req.keyless.client.full_url = req.keyless.client.resolved_protocol + '://' + req.get('host') + req.url;
+          console.log('QUERYSTRING: ' + req.keyless.client.query[opts.auth_token_querystring_param]);
+          console.log('HEADER: ' + req.get(opts.auth_token_header_param));
           if (req.keyless_user != null) {
             return get_user(req, res, next);
           }
-          if (req.keyless.client.query.auth_token != null) {
-            return validate_token(req, res, next, req.keyless.client.query.auth_token);
+          if (req.keyless.client.query[opts.auth_token_querystring_param] != null) {
+            return validate_token(req, res, next, req.keyless.client.query[opts.auth_token_querystring_param]);
           }
-          if (req.get('x-keyless-token') != null) {
-            return validate_token(req, res, next, req.get('x-keyless-token'));
+          if (req.get(opts.auth_token_header_param) != null) {
+            return validate_token(req, res, next, req.get(opts.auth_token_header_param));
           }
           if (req.session.keyless_token != null) {
             return validate_token(req, res, next, req.session.keyless_token);
@@ -159,8 +167,8 @@
         };
       },
       protect: function(req, res, next) {
-        var _ref1;
-        if (((_ref1 = req.keyless) != null ? _ref1.client : void 0) == null) {
+        var _ref3;
+        if (((_ref3 = req.keyless) != null ? _ref3.client : void 0) == null) {
           return next(new Error('Be sure to use the keyless.middleware() in your middleware stack'));
         }
         if (req.keyless_user != null) {
