@@ -18,7 +18,7 @@
   };
 
   module.exports = function(opts) {
-    var authenticate, get_user, obj, redirect_without_ticket, remove_ticket_from_url, validate_ticket, validate_token, _ref, _ref1, _ref2;
+    var authenticate, clear_keyless_data, get_user, logout, obj, redirect_without_ticket, remove_ticket_token_from_url, validate_ticket, validate_token, _ref, _ref1, _ref2;
     if (opts.server == null) {
       throw new Error('Must provide a server parameter');
     }
@@ -32,19 +32,23 @@
     if ((_ref2 = opts.auth_token_header_param) == null) {
       opts.auth_token_header_param = 'x-keyless-token';
     }
-    remove_ticket_from_url = function(url) {
+    remove_ticket_token_from_url = function(url) {
       var parsed;
       parsed = betturl.parse(url);
       delete parsed.query.auth_ticket;
+      delete parsed.query[opts.auth_token_querystring_param];
       return betturl.format(parsed);
     };
     redirect_without_ticket = function(req, res, next) {
-      return res.redirect(remove_ticket_from_url(req.keyless.client.full_url));
+      return res.redirect(remove_ticket_token_from_url(req.keyless.client.full_url));
+    };
+    clear_keyless_data = function(req) {
+      delete req.keyless_user;
+      return delete req.session.keyless_token;
     };
     authenticate = function(req, res, next) {
-      delete req.keyless_user;
-      delete req.session.keyless_token;
-      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.keyless.client.full_url)));
+      clear_keyless_data(req);
+      return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_token_from_url(req.keyless.client.full_url)));
     };
     validate_ticket = function(req, res, next, ticket) {
       var headers;
@@ -103,7 +107,7 @@
         }
         status_class = parseInt(validate_res.statusCode / 100);
         if (status_class !== 2) {
-          return authenticate(req, res, next);
+          return logout(req, res, next);
         }
         try {
           if (typeof body === 'string') {
@@ -119,6 +123,15 @@
         }
         return get_user(req, res, next);
       });
+    };
+    logout = function(req, res, next) {
+      var url;
+      clear_keyless_data(req);
+      url = opts.server + '/logout';
+      if (opts.on_logout != null) {
+        url += '?callback=' + encodeURIComponent(remove_ticket_token_from_url(opts.on_logout));
+      }
+      return res.redirect(url);
     };
     get_user = function(req, res, next) {
       if (!((req.keyless_user != null) && (opts.get_user_from_keyless_user != null) && typeof opts.get_user_from_keyless_user === 'function')) {
@@ -174,16 +187,7 @@
         }
         return authenticate(req, res, next);
       },
-      logout: function(req, res, next) {
-        var url;
-        delete req.keyless_user;
-        delete req.session.keyless_token;
-        url = opts.server + '/logout';
-        if (opts.on_logout != null) {
-          url += '?callback=' + encodeURIComponent(url);
-        }
-        return res.redirect(url);
-      }
+      logout: logout
     };
     obj.__defineSetter__('get_user_from_keyless_user', function(value) {
       return opts.get_user_from_keyless_user = value;

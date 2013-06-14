@@ -23,20 +23,24 @@ module.exports = (opts) ->
   opts.auth_token_querystring_param ?= 'auth_token'
   opts.auth_token_header_param ?= 'x-keyless-token'
   
-  remove_ticket_from_url = (url) ->
+  remove_ticket_token_from_url = (url) ->
     parsed = betturl.parse(url)
     delete parsed.query.auth_ticket
+    delete parsed.query[opts.auth_token_querystring_param]
     betturl.format(parsed)
   
   redirect_without_ticket = (req, res, next) ->
     # console.log 'KEYLESS-NODE: redirect_without_ticket'
-    res.redirect(remove_ticket_from_url(req.keyless.client.full_url))
+    res.redirect(remove_ticket_token_from_url(req.keyless.client.full_url))
+  
+  clear_keyless_data = (req) ->
+    delete req.keyless_user
+    delete req.session.keyless_token
   
   authenticate = (req, res, next) ->
     # console.log 'KEYLESS-NODE: authenticate'
-    delete req.keyless_user
-    delete req.session.keyless_token
-    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_from_url(req.keyless.client.full_url)))
+    clear_keyless_data(req)
+    res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_token_from_url(req.keyless.client.full_url)))
   
   validate_ticket = (req, res, next, ticket) ->
     # console.log 'KEYLESS-NODE: validate_ticket'
@@ -61,6 +65,7 @@ module.exports = (opts) ->
       catch e
         return next(e)
       req.session.keyless_token = body.token
+      
       redirect_without_ticket(req, res, next)
   
   validate_token = (req, res, next, token) ->
@@ -80,7 +85,8 @@ module.exports = (opts) ->
       return next(err) if err?
       # console.log 'KEYLESS-NODE: validate_token: ' + validate_res.statusCode + ' - ' + require('util').inspect(body)
       status_class = parseInt(validate_res.statusCode / 100)
-      return authenticate(req, res, next) unless status_class is 2
+      return logout(req, res, next) unless status_class is 2
+      # return authenticate(req, res, next) unless status_class is 2
       
       try
         body = JSON.parse(body) if typeof body is 'string'
@@ -90,6 +96,12 @@ module.exports = (opts) ->
       req.session.keyless_token = token
       return redirect_without_ticket(req, res, next) if req.keyless.client.query.auth_ticket?
       get_user(req, res, next)
+  
+  logout = (req, res, next) ->
+    clear_keyless_data(req)
+    url = opts.server + '/logout'
+    url += '?callback=' + encodeURIComponent(remove_ticket_token_from_url(opts.on_logout)) if opts.on_logout?
+    res.redirect(url)
   
   get_user = (req, res, next) ->
     # console.log 'KEYLESS-NODE: get_user'
@@ -113,9 +125,15 @@ module.exports = (opts) ->
         req.keyless.client.full_url = req.keyless.client.resolved_protocol + '://' + req.get('host') + req.url
         
         return get_user(req, res, next) if req.keyless_user?
-        return validate_token(req, res, next, req.keyless.client.query[opts.auth_token_querystring_param]) if req.keyless.client.query[opts.auth_token_querystring_param]?
-        return validate_token(req, res, next, req.get(opts.auth_token_header_param)) if req.get(opts.auth_token_header_param)?
-        return validate_token(req, res, next, req.session.keyless_token) if req.session.keyless_token?
+        if req.keyless.client.query[opts.auth_token_querystring_param]?
+          # console.log 'KEYLESS-NODE: token from querystring'
+          return validate_token(req, res, next, req.keyless.client.query[opts.auth_token_querystring_param])
+        if req.get(opts.auth_token_header_param)?
+          # console.log 'KEYLESS-NODE: token from header'
+          return validate_token(req, res, next, req.get(opts.auth_token_header_param))
+        if req.session.keyless_token?
+          # console.log 'KEYLESS-NODE: token from session'
+          return validate_token(req, res, next, req.session.keyless_token)
         return validate_ticket(req, res, next, req.keyless.client.query.auth_ticket) if req.keyless.client.query.auth_ticket?
         next()
     
@@ -126,12 +144,7 @@ module.exports = (opts) ->
       return next() if req.keyless_user?
       authenticate(req, res, next)
     
-    logout: (req, res, next) ->
-      delete req.keyless_user
-      delete req.session.keyless_token
-      url = opts.server + '/logout'
-      url += '?callback=' + encodeURIComponent(url) if opts.on_logout?
-      res.redirect(url)
+    logout: logout
   }
   
   obj.__defineSetter__ 'get_user_from_keyless_user', (value) ->
