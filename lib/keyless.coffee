@@ -85,7 +85,7 @@ module.exports = (opts) ->
       return next(err) if err?
       # console.log 'KEYLESS-NODE: validate_token: ' + validate_res.statusCode + ' - ' + require('util').inspect(body)
       status_class = parseInt(validate_res.statusCode / 100)
-      return logout(req, res, next) unless status_class is 2
+      return authenticate(req, res, next) unless status_class is 2
       # return authenticate(req, res, next) unless status_class is 2
       
       try

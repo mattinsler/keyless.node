@@ -40,6 +40,7 @@
       return betturl.format(parsed);
     };
     redirect_without_ticket = function(req, res, next) {
+      console.log('KEYLESS-NODE: redirect_without_ticket');
       return res.redirect(remove_ticket_token_from_url(req.keyless.client.full_url));
     };
     clear_keyless_data = function(req) {
@@ -47,11 +48,13 @@
       return delete req.session.keyless_token;
     };
     authenticate = function(req, res, next) {
+      console.log('KEYLESS-NODE: authenticate');
       clear_keyless_data(req);
       return res.redirect(opts.server + '/login?callback=' + encodeURIComponent(remove_ticket_token_from_url(req.keyless.client.full_url)));
     };
     validate_ticket = function(req, res, next, ticket) {
       var headers;
+      console.log('KEYLESS-NODE: validate_ticket');
       headers = {
         'Accept': 'application/json'
       };
@@ -68,6 +71,7 @@
         if (err != null) {
           return next(err);
         }
+        console.log('KEYLESS-NODE: validate_ticket: ' + validate_res.statusCode + ' - ' + require('util').inspect(body));
         status_class = parseInt(validate_res.statusCode / 100);
         if (status_class !== 2) {
           return authenticate(req, res, next);
@@ -85,6 +89,7 @@
     };
     validate_token = function(req, res, next, token) {
       var headers, query;
+      console.log('KEYLESS-NODE: validate_token');
       headers = {
         'Accept': 'application/json'
       };
@@ -105,9 +110,10 @@
         if (err != null) {
           return next(err);
         }
+        console.log('KEYLESS-NODE: validate_token: ' + validate_res.statusCode + ' - ' + require('util').inspect(body));
         status_class = parseInt(validate_res.statusCode / 100);
         if (status_class !== 2) {
-          return logout(req, res, next);
+          return authenticate(req, res, next);
         }
         try {
           if (typeof body === 'string') {
@@ -134,6 +140,7 @@
       return res.redirect(url);
     };
     get_user = function(req, res, next) {
+      console.log('KEYLESS-NODE: get_user');
       if (!((req.keyless_user != null) && (opts.get_user_from_keyless_user != null) && typeof opts.get_user_from_keyless_user === 'function')) {
         return next();
       }
@@ -150,6 +157,7 @@
       middleware: function() {
         return function(req, res, next) {
           var _base, _ref3, _ref4, _ref5;
+          console.log('KEYLESS-NODE: middleware');
           if ((_ref3 = req.keyless) == null) {
             req.keyless = {};
           }
@@ -163,12 +171,15 @@
             return get_user(req, res, next);
           }
           if (req.keyless.client.query[opts.auth_token_querystring_param] != null) {
+            console.log('KEYLESS-NODE: token from querystring');
             return validate_token(req, res, next, req.keyless.client.query[opts.auth_token_querystring_param]);
           }
           if (req.get(opts.auth_token_header_param) != null) {
+            console.log('KEYLESS-NODE: token from header');
             return validate_token(req, res, next, req.get(opts.auth_token_header_param));
           }
           if (req.session.keyless_token != null) {
+            console.log('KEYLESS-NODE: token from session');
             return validate_token(req, res, next, req.session.keyless_token);
           }
           if (req.keyless.client.query.auth_ticket != null) {
@@ -179,6 +190,7 @@
       },
       protect: function(req, res, next) {
         var _ref3;
+        console.log('KEYLESS-NODE: protect');
         if (((_ref3 = req.keyless) != null ? _ref3.client : void 0) == null) {
           return next(new Error('Be sure to use the keyless.middleware() in your middleware stack'));
         }

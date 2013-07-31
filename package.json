@@ -1,7 +1,7 @@
 {
   "name": "keyless.node",
   "description": "Keyless SSO Client",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "homepage": "https://github.com/mattinsler/keyless.node",
   "author": {
     "name": "Matt Insler",
